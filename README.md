@@ -42,22 +42,23 @@
 *(프로젝트 진행에 따라 모델별 성능 비교표 및 운영 비용 절감 시뮬레이션 결과를 업로드할 예정입니다.)*
 
 ## 5. 프로젝트 구조
+```text
 credit-card-fds/
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
 ├── data/
-│   ├── raw/                          # 원본 creditcard.csv (git 관리 제외)
-│   └── processed/                    # 전처리 완료된 데이터
-├── experiments/                      # 단계별 분석 및 실험 (Jupyter Notebook)
-│   ├── eda_and_split.ipynb           # 데이터 탐색(EDA) 및 데이터 누수 없는 Split 기준 수립
-│   ├── supervised_modeling.ipynb     # 지도학습 모델 비교 및 In-Fold 전처리/오버샘플링 실험
-│   ├── unsupervised_anomaly.ipynb    # 비지도 이상 탐지 모델 구축 및 라벨 미비 상황 대응
-│   └── final_evaluation_report.ipynb #임계값/비용 최적화 시뮬레이션 및 SHAP 기반 XAI 리포트 작성
-├── src/                              # 재사용 가능한 파이썬 모듈
+│   ├── raw/                  # 원본 creditcard.csv (git 관리 제외)
+│   └── processed/            # 전처리 완료된 데이터
+├── experiments/              # 단계별 분석 및 실험 (Jupyter Notebook)
+│   ├── 01_eda_and_split.ipynb           # 데이터 탐색(EDA) 및 데이터 누수 없는 Split 기준 수립
+│   ├── 02_supervised_modeling.ipynb    # 지도학습 모델 비교 및 In-Fold 전처리/오버샘플링 실험
+│   ├── 03_unsupervised_anomaly.ipynb   # 비지도 이상 탐지 모델 구축 및 라벨 미비 상황 대응
+│   └── 04_final_evaluation_report.ipynb # 임계값/비용 최적화 시뮬레이션 및 SHAP 기반 XAI 리포트 작성
+├── src/                      # 재사용 가능한 파이썬 모듈
 │   ├── __init__.py
-│   ├── data_loader.py                # 데이터 로드 및 In-Fold 분할
-│   ├── metrics.py                    # Cost Function 및 PR-AUC 계산
-│   └── visualization.py              # SHAP 및 그래프 출력 함수
-└── reports/                          # 산출물 및 시각화 저장소
-    └── figures/                      # 그래프 이미지 파일 저장
+│   ├── data_loader.py        # 데이터 로드 및 In-Fold 분할
+│   ├── metrics.py            # Cost Function 및 PR-AUC 계산
+│   └── visualization.py      # SHAP 및 그래프 출력 함수
+└── reports/                  # 산출물 및 시각화 저장소
+    └── figures/              # 그래프 이미지 파일 저장
