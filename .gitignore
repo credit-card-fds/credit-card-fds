@@ -10,3 +10,4 @@ data/processed/*
 *.pkl
 *.h5
 .DS_Store
+.vscode/
