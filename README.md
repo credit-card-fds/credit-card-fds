@@ -48,17 +48,17 @@ credit-card-fds/
 ├── README.md
 ├── requirements.txt
 ├── data/
-│   ├── raw/                  # 원본 creditcard.csv (git 관리 제외)
-│   └── processed/            # 전처리 완료된 데이터
-├── experiments/              # 단계별 분석 및 실험 (Jupyter Notebook)
-│   ├── 01_eda_and_split.ipynb           # 데이터 탐색(EDA) 및 데이터 누수 없는 Split 기준 수립
-│   ├── 02_supervised_modeling.ipynb    # 지도학습 모델 비교 및 In-Fold 전처리/오버샘플링 실험
-│   ├── 03_unsupervised_anomaly.ipynb   # 비지도 이상 탐지 모델 구축 및 라벨 미비 상황 대응
-│   └── 04_final_evaluation_report.ipynb # 임계값/비용 최적화 시뮬레이션 및 SHAP 기반 XAI 리포트 작성
-├── src/                      # 재사용 가능한 파이썬 모듈
+│   ├── raw/                      # 원본 데이터 (creditcard.csv)
+│   └── processed/                # 전처리된 Split 데이터 (X_train, y_train 등)
+├── experiments/                  # 핵심 실험 및 모델링 스크립트
+│   ├── eda_and_split.ipynb       # [예목 담당] EDA, 데이터 정제 및 Train/Val/Test 분할
+│   ├── baseline_evaluation.py    # [동경 담당] Baseline 모델 구축 및 PR-AUC 평가 프레임워크
+│   ├── supervised_modeling.ipynb # [예목&동경 담당] 지도학습 모델 비교 & In-Fold 전처리
+│   ├── unsupervised_anomaly.ipynb# [동경 담당] 비지도 이상 탐지 & 운영 비용 시뮬레이션
+│   └── final_report.ipynb        # [예목 담당] Test Set 최종 평가 & SHAP(XAI) 리포트
+├── src/                          # 공통 모듈화 파이썬 코드
 │   ├── __init__.py
-│   ├── data_loader.py        # 데이터 로드 및 In-Fold 분할
-│   ├── metrics.py            # Cost Function 및 PR-AUC 계산
-│   └── visualization.py      # SHAP 및 그래프 출력 함수
-└── reports/                  # 산출물 및 시각화 저장소
-    └── figures/              # 그래프 이미지 파일 저장
+│   ├── data_loader.py            # 데이터 로드 및 전처리 공통 모듈
+│   └── metrics.py                # FDS 평가 지표 및 비용 함수 계산 모듈
+└── reports/                      # 최종 산출물 및 시각화 리포트
+    └── figures/                  # EDA 및 모델 평가 차트 이미지 저장소
