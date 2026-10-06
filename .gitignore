@@ -18,6 +18,7 @@ Thumbs.db
 .ipynb_checkpoints
 
 # 4. 데이터셋 (용량이 큰 데이터 파일 Git 추적 제외)
+reports/figures/
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
