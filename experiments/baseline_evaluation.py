@@ -103,5 +103,5 @@ lr_res = evaluate_fds_model("Basic Logistic Regression", y_val, lr_pred, lr_prob
 
 # 8. 평가 결과 데이터프레임 생성 및 CSV 파일 최종 저장
 results_df = pd.DataFrame([dummy_res, lr_res])                # 두 모델의 결과 딕셔너리를 하나의 pandas DataFrame 테이블로 통합
-save_path = os.path.join(PROCESSED_DATA_DIR, 'day1_baseline_results.csv') # 저장 디렉토리 경로 지정
+save_path = os.path.join(PROCESSED_DATA_DIR, 'baseline_results.csv') # 저장 디렉토리 경로 지정
 results_df.to_csv(save_path, index=False)                     # Index 번호 없이 깔끔한 CSV 파일로 저장
