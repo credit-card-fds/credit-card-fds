@@ -11,11 +11,15 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd  # 데이터프레임 조작 및 표 생성을 위한 라이브러리
 import seaborn as sns
+import torch  # PyTorch 딥러닝 프레임워크 불러오기
+import torch.nn as nn  # 신경망 계층(Linear, ReLU 등) 생성을 위한 모듈 불러오기
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     average_precision_score, confusion_matrix, precision_recall_curve
 )
+
 
 """
 evaluate_fds_model() :
@@ -50,11 +54,11 @@ def evaluate_fds_model(model_name, y_true, y_pred, y_prob):
         'FP': fp, 'FN': fn, 'TP': tp, 'TN': tn
     }
 
+
 """
 plot_pr_curve() :
     - 불균형 FDS 데이터의 핵심 평가 곡선인 Precision-Recall Curve 시각화 및 저장
     - 무작위/일괄 예측 성능 기준선(No Skill Baseline) 대비 모델 성능 직관적 비교 제공
-
 """
 def plot_pr_curve(y_true, y_prob, model_name="Model", save_path=None):
     """
@@ -85,6 +89,7 @@ def plot_pr_curve(y_true, y_prob, model_name="Model", save_path=None):
         print(f"[Graph Saved] PR Curve -> {save_path}")
     
     plt.close()                                                 # 메모리 누수 방지를 위한 플롯 닫기
+
 
 """
 plot_confusion_matrix_heatmap() :
@@ -121,3 +126,84 @@ def plot_confusion_matrix_heatmap(y_true, y_pred, model_name="Model", save_path=
         print(f"[Graph Saved] Confusion Matrix -> {save_path}")
         
     plt.close()                                                 # 메모리 누수 방지를 위한 플롯 닫기
+
+
+"""
+임계값 Threshold 별 검토 건수 시뮬레이션 함수
+사기일 가능성이 몇 점 이상일 때 실제 사기 거래로 최종 판단하고 검토/대응할 것인가?"를 결정하기 위한 함수
+사기점수 계산 score , 다양한 기준선 Threshold
+임계값이란 60점 이상이면 합격 이라고 정할 때 60점이 바로 임계값(threshold)
+"""
+def evaluate_thresholds(y_true, scores, thresholds=None):
+    """
+    y_true : 실제 사기 여부 (0: 정상, 1: 사기)
+    scores : 모델이 출력한 확률값(y_prob) 또는 비지도 이상치 점수(score)
+    thresholds : 테스트할 임계값 목록 (기본값 : None)
+    """
+    if thresholds is None :
+        # scores 의 값의 상위 0.1% ~ 5% 영역을 커버하는 10개의 임계값을 자동으로 설정
+        thresholds = np.percentile(scores, np.linspace(95, 99.9, 10))
+
+    results = [] # 임계값별 평가 결과를 담을 빈 리스트 생성
+
+    for th in thresholds: #생선된 10개의 임계값을 하나씩 순회
+        # 이상치 점수가 임계값(th) 이상이면 1(사기), 미만이면 0(정상) 으로 예측
+        y_pred = (scores >= th).astype(int)
+
+        # 실제 값과 예측값을 비교해 True Negative, False Positive, False Negative, True Positive 건수 추출
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+        # Recall 재현율: 실제 사기 중 잡은 비율 계산
+        rec = recall_score(y_true, y_pred, zero_division=0)
+        # Precision 정밀도 : 사기라고 한 것 중 진짜 사기 비율 계산
+        prec = precision_score(y_true, y_pred, zero_division=0)
+        # F1-Score 재현율과 정밀도의 조화 평균 계산
+        f1 = f1_score(y_true, y_pred, zero_division=0)
+
+        #계산된 지표들을 딕셔너리 형태로 저장
+        results.append({
+            "Threshold" : tn, #적용된 임계값
+            "Recall" : rec, #재현율 (사기 탐지율)
+            "Precision" : prec, #정밀도
+            "F1-Score" : f1, # f1 스코어
+            "TP (사기 탐지)" : tp, # 실제 사기를 사기로 맞춘 건수
+            "FP (오탐/검토 대상)" : fp, # 사기를 정상으로 오탐해 상담원이 검토해야 하는 건
+            "FN (놓친 사기)" : fn, #사기를 정상으로 놓쳐 피해가 발생한 건수
+            "Total Flagged (총 경고)" : fp+tp # FDS 시스템에서 경고를 올린 총 건수
+        })
+    return pd.DataFrame(results) #결과를 데이터 프레임 표로 반환
+
+
+"""
+# PyTorch Autoencoder 모델
+# PyTorch의 기본 신경망 클래스(nn.Module) 상속
+정상 거래 패턴만 완벽하게 요약해서 외운 뒤, 
+새로 들어온 거래가 정상이 맞는지 '모방'해보는 작업입니다.
+정상 거래가 들어오면: 이미 외운 패턴이라 아주 똑같이 복원
+사기(이상) 거래가 들어오면 본 적 없는 기괴한 패턴이라 
+원래 모양대로 복원을 못 하고 엉뚱하게 그려냅니다
+즉 내가 복원하기 힘들 만큼 이상하게 생긴 거래 = 사기 거래 비지도학습 모델
+"""
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim): #초기화 메서드(input_dim : 입력 피처 개수, 예 29개)
+        super(Autoencoder, self).__init__() #부모 클래스의 초기화 함수 실행
+
+        #인코더 : 입력 데이터를 작은 차원(29차원 -> 16차원 -> 8차원)으로 압축하는 신경망
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 16),   #입력 차원29 를 16차원으로 줄임
+            nn.ReLU(),                  #비선형 활성화 함수 적용
+            nn.Linear(16, 8),           #16 차원을 8차원 잠재공간으로 축소
+            nn.ReLU()                   #비선형 활성화 함수 적용
+        )
+
+        # 디코더 : 압축된 8차원 데이터를 다시 원본 차원(8차원 -> 16차원 ->29차원)으로 복구
+        self.decoder = nn.Sequential(
+            nn.Linear(8, 16),           # 8차원을 16차원으로 확충
+            nn.ReLU(),                  # 비선형 활성화 함수 적용
+            nn.Linear(16, input_dim)    # 16차원을 다시 원본 피처 차원(29)으로 최종 복원
+        )
+
+    def forward(self, x): # 순전파(Foward Propagation) 연산 정의
+        latent = self.encoder(x) #입력 데이터 x를 인코더에 넣어 8차원으로 압축
+        reconstructed = self.decoder(latent) #압축된 latent를 디코더에 넣어 원본 모양으로 복원
+        return reconstructed #복원된 데이터 반환
