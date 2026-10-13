@@ -45,7 +45,7 @@ def evaluate_fds_model(model_name, y_true, y_pred, y_prob):
     print(f"5. F1-Score  (조화평균): {f1:.5f}")
     print(f"----------------------------------------------------------")
     print(f"Confusion Matrix (혼동행렬):\n{cm}")
-    print(f" - TN: {tn:,}건 | FP: {fp:,}건 | FN: {fn:,}건 | TP: {tp:,}건")
+    print(f" - TN(정상 예측 성공): {tn:,}건 | FP(오탐 / 오인 신고): {fp:,}건 | FN(미탐 / 놓친 사기): {fn:,}건 | TP(사기 탐지 성공): {tp:,}건")
     print(f"==========================================================\n")
     
     return {
@@ -162,7 +162,7 @@ def evaluate_thresholds(y_true, scores, thresholds=None):
 
         #계산된 지표들을 딕셔너리 형태로 저장
         results.append({
-            "Threshold" : tn, #적용된 임계값
+            "Threshold" : th, #적용된 임계값
             "Recall" : rec, #재현율 (사기 탐지율)
             "Precision" : prec, #정밀도
             "F1-Score" : f1, # f1 스코어

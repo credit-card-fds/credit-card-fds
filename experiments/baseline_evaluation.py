@@ -13,7 +13,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import RobustScaler
 
-from src.utils import evaluate_fds_model, plot_pr_curve, plot_confusion_matrix_heatmap
+from src.utils import evaluate_fds_model, plot_pr_curve, evaluate_thresholds ,plot_confusion_matrix_heatmap
 
 def load_and_preprocess_data(data_dir):
     """
@@ -56,11 +56,7 @@ def load_and_preprocess_data(data_dir):
     X_train_scaled = X_train.drop(columns=drop_cols).copy()       # X_train에서 Time 컬럼을 제거한 피처 복사본 생성
     X_val_scaled = X_val.drop(columns=drop_cols).copy()           # X_val에서 Time 컬럼을 제거한 피처 복사본 생성
 
-    scaler = RobustScaler()                                       # 이상치에 강한 중앙값/IQR 기반 스케일러 객체 생성
-    X_train_scaled['Amount'] = scaler.fit_transform(X_train_scaled[['Amount']]) # Train 데이터의 Amount로 기준을 학습(fit) 후 변환(transform)
-    X_val_scaled['Amount'] = scaler.transform(X_val_scaled[['Amount']])         # Train 기준을 평가 데이터에 유출 없이 그대로 적용(transform만)
-
-    return X_train_scaled, y_train, X_val_scaled, y_val, scaler
+    return X_train_scaled, y_train, X_val_scaled, y_val
 
 
 def run_baseline_evaluation(X_train, y_train, X_val, y_val):
@@ -89,24 +85,27 @@ def run_baseline_evaluation(X_train, y_train, X_val, y_val):
     lr_res = evaluate_fds_model("Basic Logistic Regression", y_val, lr_pred, lr_prob) # 로지스틱 회귀 모델 결과 계산 및 평가 출력
     results.append(lr_res)
 
-    return pd.DataFrame(results), lr_pred, lr_prob
+    # utils.evaluate_thresholds를 활용해 로지스틱 회귀의 임계값별 지표 산출
+    lr_threshold_df = evaluate_thresholds(y_val, lr_prob)
+
+    return pd.DataFrame(results), lr_pred, lr_prob, lr_threshold_df
 
 def main():
     # 데이터 로드 및 전처리 수행
-    X_train, y_train, X_val, y_val, scaler = load_and_preprocess_data(PROCESSED_DATA_DIR)
+    X_train, y_train, X_val, y_val = load_and_preprocess_data(PROCESSED_DATA_DIR)
 
     # 베이스라인 모델 평가 수행 및 시각화용 예측값 받아오기
-    results_df, lr_pred, lr_prob = run_baseline_evaluation(X_train, y_train, X_val, y_val)
+    results_df, lr_pred, lr_prob, lr_threshold_df = run_baseline_evaluation(X_train, y_train, X_val, y_val)
 
-    # 시각화 그래프 저장 경로 지정 및 파일 생성 (★ 추가된 부분)
+    # 시각화 그래프 저장 경로 지정 및 파일 생성
     FIGURE_DIR = os.path.join(BASE_DIR, '../reports/figures')
     
     # (이미 만들어둔 로지스틱 회귀 모델 예측값 확률 y_prob, 예측 클래스 y_pred 사용)
-    plot_pr_curve(y_val, lr_prob, model_name="Basic Logistic Regression", 
-                  save_path=os.path.join(FIGURE_DIR, 'baseline_pr_curve.png'))
-                  
-    plot_confusion_matrix_heatmap(y_val, lr_pred, model_name="Basic Logistic Regression", 
-                                  save_path=os.path.join(FIGURE_DIR, 'baseline_confusion_matrix.png'))
+    # plot_pr_curve(y_val, lr_prob, model_name="Basic Logistic Regression", 
+    #               save_path=os.path.join(FIGURE_DIR, 'baseline_pr_curve.png'))
+    
+    # plot_confusion_matrix_heatmap(y_val, lr_pred, model_name="Basic Logistic Regression", 
+    #                               save_path=os.path.join(FIGURE_DIR, 'baseline_confusion_matrix.png'))
 
     # 평가 결과 데이터프레임 생성 및 CSV 파일 최종 저장
     save_path = os.path.join(PROCESSED_DATA_DIR, 'baseline_results.csv') # 저장 디렉토리 경로 지정
