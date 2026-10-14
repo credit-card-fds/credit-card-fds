@@ -7,7 +7,6 @@
               코드 중복을 제거하고 모듈화된 유지보수 환경을 제공함.
 ================================================================================
 """
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,7 +18,7 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     average_precision_score, confusion_matrix, precision_recall_curve
 )
-
+import koreanize_matplotlib # 한글 폰트 설정이 필요한 경우
 
 """
 evaluate_fds_model() :
@@ -53,79 +52,6 @@ def evaluate_fds_model(model_name, y_true, y_pred, y_prob):
         'Recall': rec, 'Precision': prec, 'F1_Score': f1,
         'FP': fp, 'FN': fn, 'TP': tp, 'TN': tn
     }
-
-
-"""
-plot_pr_curve() :
-    - 불균형 FDS 데이터의 핵심 평가 곡선인 Precision-Recall Curve 시각화 및 저장
-    - 무작위/일괄 예측 성능 기준선(No Skill Baseline) 대비 모델 성능 직관적 비교 제공
-"""
-def plot_pr_curve(y_true, y_prob, model_name="Model", save_path=None):
-    """
-    Precision-Recall Curve(정밀도-재현율 곡선)를 시각화하여 생성하고 지정된 경로에 저장합니다.
-    """
-    # 1. PR 곡선 좌표(Precision, Recall) 계산
-    precision, recall, _ = precision_recall_curve(y_true, y_prob)
-    
-    # 2. 불균형 데이터 기준 무작위 예측 성능 기준선(No Skill Line = 실제 사기 비율) 산출
-    no_skill = np.mean(y_true)
-    pr_auc = average_precision_score(y_true, y_prob)           # 차트 범례 표시용 PR-AUC 값 계산
-    
-    # 3. 그래프 그리기 설정
-    plt.figure(figsize=(7, 5))                                  # 그래프 가로/세로 크기 설정
-    plt.plot(recall, precision, marker='.', label=f'{model_name} (PR-AUC = {pr_auc:.4f})') # 모델 PR 곡선 플롯
-    plt.axhline(y=no_skill, color='r', linestyle='--', label=f'No Skill Baseline ({no_skill:.5f})') # 기준선 플롯
-    
-    plt.xlabel('Recall (Recall / True Positive Rate)')           # X축 라벨 (재현율)
-    plt.ylabel('Precision (Positive Predictive Value)')          # Y축 라벨 (정밀도)
-    plt.title(f'Precision-Recall Curve - {model_name}')         # 차트 제목 설정
-    plt.legend(loc='upper right')                               # 범례 위치 우상단 고정
-    plt.grid(True, linestyle=':', alpha=0.6)                    # 격자선 투명도 조절
-    
-    # 4. 이미지 저장 로직
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True) # 저장 경로 상위 디렉터리 자동 생성
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')   # 여백 없이 선명하게 고해상도(300DPI) 저장
-        print(f"[Graph Saved] PR Curve -> {save_path}")
-    
-    plt.close()                                                 # 메모리 누수 방지를 위한 플롯 닫기
-
-
-"""
-plot_confusion_matrix_heatmap() :
-    - 혼동행렬(TN, FP, FN, TP) 수치를 Seaborn Heatmap 형태로 시각화 및 저장
-    - FDS 운영의 핵심인 FN(미탐)과 FP(오탐) 비중을 시각적으로 명확히 파악 가능
-"""
-def plot_confusion_matrix_heatmap(y_true, y_pred, model_name="Model", save_path=None):
-    """
-    Confusion Matrix(혼동행렬)를 직관적인 Seaborn Heatmap으로 시각화하여 생성하고 저장합니다.
-    """
-    # 1. 혼동행렬 데이터 산출
-    cm = confusion_matrix(y_true, y_pred)
-    
-    # 2. 히트맵 그리기 설정
-    plt.figure(figsize=(6, 5))                                  # 그래프 크기 지정
-    sns.heatmap(
-        cm, 
-        annot=True,                                             # 셀 내부 수치 표시 활성화
-        fmt='d',                                                # 정수(Integer) 포맷 설정
-        cmap='Blues',                                           # 푸른색 계열 칼라맵 적용
-        cbar=False,                                             # 범례 칼라바 숨김 처리
-        xticklabels=['Normal (0)', 'Fraud (1)'],                # X축 예측 라벨 명칭
-        yticklabels=['Normal (0)', 'Fraud (1)']                 # Y축 실제 정답 라벨 명칭
-    )
-    
-    plt.xlabel('Predicted Label')                               # X축 타이틀
-    plt.ylabel('True Label')                                    # Y축 타이틀
-    plt.title(f'Confusion Matrix - {model_name}')               # 차트 제목
-    
-    # 3. 이미지 저장 로직
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True) # 저장 경로 상위 디렉터리 자동 생성
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')   # 여백 제거 및 고해상도 저장
-        print(f"[Graph Saved] Confusion Matrix -> {save_path}")
-        
-    plt.close()                                                 # 메모리 누수 방지를 위한 플롯 닫기
 
 
 """
@@ -173,6 +99,52 @@ def evaluate_thresholds(y_true, scores, thresholds=None):
         })
     return pd.DataFrame(results) #결과를 데이터 프레임 표로 반환
 
+def plot_and_save_simulation(df_results, model_name, filename, figures_dir=None):
+    """
+    임계값(Threshold) 변화에 따른 Recall, Precision, FP(오탐/검토 건수) 변화를 이중 Y축으로 시각화하고 저장합니다.
+    
+    Parameters:
+    - df_results: evaluate_thresholds 결과 데이터프레임
+    - model_name: 그래프 제목에 표시할 모델 이름 (예: 'Isolation Forest')
+    - filename: reports/figures 폴더에 저장할 파일명 (예: 'isolation_forest_simulation.png')
+    - figures_dir: 저장할 디렉토리 경로 (기본값 설정 시 자동으로 상위 reports/figures 경로 설정)
+    """
+    if figures_dir is None:
+        # src/utils.py 기준 상위 디렉토리(프로젝트 루트)의 reports/figures 경로 지정
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        figures_dir = os.path.join(base_dir, '../reports/figures')
+
+    os.makedirs(figures_dir, exist_ok=True) # reports/figures 폴더가 없으면 새로 생성
+    save_path = os.path.join(figures_dir, filename) # 최종 저장할 파일의 경로
+
+    fig, ax1 = plt.subplots(figsize=(10, 6)) # 가로 10인치, 세로 6인치 크기의 그래프 도화지 생성
+
+    # 왼쪽 Y축: Recall(재현율) 및 Precision(정밀도)
+    ax1.set_xlabel('Threshold 이상치 점수 임계값', fontsize=12)
+    ax1.set_ylabel('Score (Recall / Precision)', color='tab:blue', fontsize=12)
+    
+    line1 = ax1.plot(df_results['Threshold'], df_results['Recall'], marker='o', color='tab:blue', label='Recall (사기 탐지율)')
+    line2 = ax1.plot(df_results['Threshold'], df_results['Precision'], marker='s', color='tab:green', label='Precision (정밀도)')
+
+    ax1.grid(True, linestyle='--', alpha=0.5)  # 점선 형태의 격자 배경 표시
+
+    # 오른쪽 Y축: FP (상담원 검토 건수)
+    ax2 = ax1.twinx()  # X축을 공유하는 오른쪽 Y축 생성
+    ax2.set_ylabel('FP (오탐/검토 건수)', color='tab:red', fontsize=12)  
+    line3 = ax2.plot(df_results['Threshold'], df_results['FP (오탐/검토 대상)'], marker='^', color='tab:red', linestyle='--', label='FP (검토 건수)')  
+    ax2.tick_params(axis='y', labelcolor='tab:red')  # 오른쪽 Y축 눈금 색상 변경
+
+    # 범례(Legend) 및 타이틀 설정
+    lines = line1 + line2 + line3  # 3개 그래프 선 정보 하나로 통합
+    labels = [l.get_label() for l in lines]  # 범례 라벨 텍스트 추출
+    ax1.legend(lines, labels, loc='center left')  # 중앙 왼쪽에 범례 상자 표시
+
+    plt.title(f'[{model_name}] Threshold Simulation (Recall vs FP)', fontsize=14, pad=15)  
+    plt.tight_layout()  # 여백을 자동으로 깔끔하게 조정
+    
+    plt.savefig(save_path, dpi=300)  # 지정한 경로에 300 DPI 고해상도 이미지 파일로 저장
+    plt.show()  # 화면에 그래프 출력
+    print(f"[저장 완료] 그래프 파일: {save_path}")  # 저장 완료 안내 출력
 
 """
 # PyTorch Autoencoder 모델

@@ -13,7 +13,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import RobustScaler
 
-from src.utils import evaluate_fds_model, plot_pr_curve, evaluate_thresholds ,plot_confusion_matrix_heatmap
+from src.utils import evaluate_fds_model, evaluate_thresholds, plot_and_save_simulation
 
 def load_and_preprocess_data(data_dir):
     """
@@ -88,25 +88,26 @@ def run_baseline_evaluation(X_train, y_train, X_val, y_val):
     # utils.evaluate_thresholds를 활용해 로지스틱 회귀의 임계값별 지표 산출
     lr_threshold_df = evaluate_thresholds(y_val, lr_prob)
 
-    return pd.DataFrame(results), lr_pred, lr_prob, lr_threshold_df
+    return pd.DataFrame(results), lr_threshold_df
 
 def main():
     # 데이터 로드 및 전처리 수행
     X_train, y_train, X_val, y_val = load_and_preprocess_data(PROCESSED_DATA_DIR)
 
     # 베이스라인 모델 평가 수행 및 시각화용 예측값 받아오기
-    results_df, lr_pred, lr_prob, lr_threshold_df = run_baseline_evaluation(X_train, y_train, X_val, y_val)
+    results_df, lr_threshold_df = run_baseline_evaluation(X_train, y_train, X_val, y_val)
 
     # 시각화 그래프 저장 경로 지정 및 파일 생성
     FIGURE_DIR = os.path.join(BASE_DIR, '../reports/figures')
-    
-    # (이미 만들어둔 로지스틱 회귀 모델 예측값 확률 y_prob, 예측 클래스 y_pred 사용)
-    # plot_pr_curve(y_val, lr_prob, model_name="Basic Logistic Regression", 
-    #               save_path=os.path.join(FIGURE_DIR, 'baseline_pr_curve.png'))
-    
-    # plot_confusion_matrix_heatmap(y_val, lr_pred, model_name="Basic Logistic Regression", 
-    #                               save_path=os.path.join(FIGURE_DIR, 'baseline_confusion_matrix.png'))
 
+    # 이중 Y축 시뮬레이션 그래프 생성 및 reports/figures 폴더 저장 실행
+    plot_and_save_simulation(
+        df_results=lr_threshold_df, 
+        model_name="Basic Logistic Regression", 
+        filename="logistic_regression_simulation.png",
+        figures_dir=FIGURE_DIR
+    )
+    
     # 평가 결과 데이터프레임 생성 및 CSV 파일 최종 저장
     save_path = os.path.join(PROCESSED_DATA_DIR, 'baseline_results.csv') # 저장 디렉토리 경로 지정
     results_df.to_csv(save_path, index=False)                            # Index 번호 없이 깔끔한 CSV 파일로 저장
