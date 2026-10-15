@@ -58,7 +58,7 @@ credit-card-fds/
 │   └── final_report.ipynb        # [예목 담당] Test Set 최종 평가 & SHAP(XAI) 리포트
 ├── src/                          # 공통 모듈화 파이썬 코드
 │   ├── __init__.py
-│   ├── data_loader.py            # 데이터 로드 및 전처리 공통 모듈
+│   ├── utils.py                  # 모델 평가, 임계값 탐색 및 이중 Y축 시각화 함수 모듈
 │   └── metrics.py                # FDS 평가 지표 및 비용 함수 계산 모듈
 └── reports/                      # 최종 산출물 및 시각화 리포트
     └── figures/                  # EDA 및 모델 평가 차트 이미지 저장소

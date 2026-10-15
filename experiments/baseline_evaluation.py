@@ -12,52 +12,9 @@ import pandas as pd
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import RobustScaler
+import sys
 
-from src.utils import evaluate_fds_model, evaluate_thresholds, plot_and_save_simulation
-
-def load_and_preprocess_data(data_dir):
-    """
-    Train, Validation 분할 데이터를 로드하고 Time 제거 및 Amount RobustScaler 스케일링을 수행합니다.
-    Data Leakage 방지를 위해 Train 기준으로만 fit을 수행합니다.
-    """
-    # 1. 팀원이 분할하여 생성한 3개 핵심 파일 존재 여부 정의 및 사전 점검
-    required_files = {
-        'train': os.path.join(data_dir, 'train_processed.csv'),       # Train 데이터 절대 경로
-        'val': os.path.join(data_dir, 'validation_processed.csv'),    # Validation 데이터 절대 경로
-        'test': os.path.join(data_dir, 'test_processed.csv')          # Test 데이터 절대 경로
-    }
-
-    # 3개 파일 중 하나라도 실제 경로에 존재하지 않는지 검사
-    missing_files = [path for name, path in required_files.items() if not os.path.exists(path)]
-
-    if missing_files:                                             # 누락된 파일이 하나라도 존재할 경우
-        print("필수 분할 데이터 파일이 존재하지 않습니다:")
-        for path in missing_files:                                # 누락된 파일 경로들을 반복 출력
-            print(f" - 누락된 파일: {path}")
-        print("eda_and_split.ipynb를 먼저 실행하여 Split 데이터를 생성해 주세요!")
-        sys.exit(1)                                               # 파일 누락 시 프로그램이 에러로 튕기지 않도록 안전하게 종료
-
-    # 2. 정제된 CSV 데이터 로드
-    train_df = pd.read_csv(required_files['train'])               # Train 분할 데이터셋 로드
-    val_df = pd.read_csv(required_files['val'])                   # Validation 분할 데이터셋 로드
-
-    # 3. 데이터프레임에서 X(피처 데이터)와 y(정답/Class 라벨) 분리
-    X_train = train_df.drop(columns=['Class'])                    # Train 데이터에서 Class 컬럼을 제외하여 입력 피처 생성
-    y_train = train_df['Class'].values                            # Train 데이터의 Class 컬럼만 추출하여 1차원 정답 배열 생성
-
-    X_val = val_df.drop(columns=['Class'])                        # Validation 데이터에서 Class 컬럼을 제외하여 입력 피처 생성
-    y_val = val_df['Class'].values                                # Validation 데이터의 Class 컬럼만 추출하여 1차원 정답 배열 생성
-
-    print(f"[Data Loaded] Train: {X_train.shape}, Validation: {X_val.shape}") # 로드된 데이터셋의 행/열 형태 출력
-
-    # 4. Time 변수 제거 및 Amount 변수 RobustScaler 적용 (Data Leakage 방지 방식)
-    drop_cols = ['Time'] if 'Time' in X_train.columns else []     # X_train에 'Time' 컬럼이 존재하면 제거 대상에 추가
-
-    X_train_scaled = X_train.drop(columns=drop_cols).copy()       # X_train에서 Time 컬럼을 제거한 피처 복사본 생성
-    X_val_scaled = X_val.drop(columns=drop_cols).copy()           # X_val에서 Time 컬럼을 제거한 피처 복사본 생성
-
-    return X_train_scaled, y_train, X_val_scaled, y_val
-
+from src.utils import evaluate_fds_model, evaluate_thresholds, plot_and_save_simulation, load_and_preprocess_data
 
 def run_baseline_evaluation(X_train, y_train, X_val, y_val):
     """
@@ -66,7 +23,7 @@ def run_baseline_evaluation(X_train, y_train, X_val, y_val):
     results = []
 
     # 5. Baseline 1: Dummy Model (무조건 최빈값 0으로만 예측하여 '정확도의 함정' 증명)
-    dummy_model = DummyClassifier(strategy='most_frequent')       # 가장 빈도수 높은 클래스(0: 정상)로만 예측하는 Dummy 객체 생성
+    dummy_model = DummyClassifier(strategy='most_frequent')        # 가장 빈도수 높은 클래스(0: 정상)로만 예측하는 Dummy 객체 생성
     dummy_model.fit(X_train, y_train)                              # Train 데이터셋의 최빈값 클래스 파악
 
     dummy_pred = dummy_model.predict(X_val)                        # Validation 데이터의 모든 행에 대해 0(정상)으로 일괄 예측
