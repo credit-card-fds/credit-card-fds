@@ -35,7 +35,7 @@ def run_baseline_evaluation(X_train, y_train, X_val, y_val):
     # 6. Baseline 2: Basic Logistic Regression (기본 로지스틱 회귀 모델)
     lr_base = LogisticRegression(random_state=42, max_iter=1000, solver='lbfgs') # L-BFGS 최적화 알고리즘 기반 로지스틱 회귀 객체 생성
     lr_base.fit(X_train, y_train)                                  # X_train과 y_train 간의 선형 관계 학습 (가중치 및 편향 최적화)
-
+    
     lr_pred = lr_base.predict(X_val)                               # X_val에 대한 예측 클래스(0 또는 1) 산출 (기본 임계값 0.5 기준)
     lr_prob = lr_base.predict_proba(X_val)[:, 1]                   # X_val 각 행이 클래스 1(사기)일 계산된 확률값만 추출
 
