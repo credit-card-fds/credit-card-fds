@@ -1,6 +1,7 @@
 """
 ⑧ 시연 화면 (Streamlit)
 - 실행: agent/ 폴더에서 `streamlit run app.py` → 브라우저에서 http://localhost:8501
+- 탭 0 실시간 탐지: Test 거래를 시간대 순으로 흘려보내며 RF가 즉시 점수를 매기고, 경보 거래에 근거를 자동으로 붙임
 - 탭 1 리뷰 큐: 거래를 고르면 도구 4개를 그 자리에서 실행하고, 저장된 에이전트 권고를 함께 보여 줌
 - 탭 2 모델 비교: 과제 노트북이 만든 결과표(reports/tables)를 읽어 성능·비용을 비교
 - 탭 3 에이전트 평가: 권고 vs 실제 라벨 (사이드바의 "정답 공개"를 켜야 보임)
@@ -11,6 +12,7 @@ import importlib.util
 import os
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -108,6 +110,82 @@ def bar_chart(df, x, y, color=None, color_domain=None, color_range=None, x_title
     return chart.properties(height=height or max(140, 34 * len(df)))
 
 
+def render_detail(t, key):
+    """거래 1건의 상세 근거 (리뷰 큐 탭과 실시간 탐지 탭이 같이 씀)
+    - key: 두 탭의 버튼 이름이 겹치지 않게 붙이는 접두어 (Streamlit은 같은 위젯이 두 번 나오면 오류)
+    """
+    tools = run_tools(t)
+    p = tools["priority"]["fraud_prob"]
+
+    st.subheader(f"거래 {t} · 사기 확률 {p:.3f} ({score_band(p)})")
+
+    # (1) 에이전트 권고 (저장된 결과)
+    saved = None if results is None else results[results["test_row"] == t]
+    if saved is not None and len(saved):
+        st.caption("에이전트 권고 (outputs/agent_results.csv에 저장된 결과)")
+        show_recommendation(saved.iloc[0].to_dict(), actual_map.get(t))
+    else:
+        st.info("저장된 에이전트 권고가 없습니다.")
+
+    # (2) 에이전트 실시간 실행 (API 키가 있을 때만)
+    can_run = agent_available()
+    if st.button("▶ 이 거래로 에이전트 다시 실행 (Claude API, 비용 발생)", disabled=not can_run, key=f"{key}_run_{t}"):
+        import anthropic                                   # 키가 있을 때만 불러옴
+        from agent import review_transaction
+        with st.status("에이전트가 도구를 호출하며 조사하는 중...", expanded=True) as status:
+            live = review_transaction(anthropic.Anthropic(), toolkit, t, p)
+            status.update(label=f"조사 완료 (도구 {live['n_tool_calls']}회 호출)", state="complete")
+        show_recommendation(live, actual_map.get(t))
+    if not can_run:
+        st.caption("API 키(ANTHROPIC_API_KEY)와 anthropic 패키지가 있어야 실행할 수 있습니다.")
+
+    # (3) 도구 2: SHAP 기여도
+    st.markdown("##### 도구 2 · 점수에 영향을 준 변수 (SHAP)")
+    contrib = pd.DataFrame(tools["explain"]["top_contributions"])
+    st.altair_chart(bar_chart(
+        contrib, "shap", "feature", color="direction",
+        color_domain=["사기 쪽", "정상 쪽"], color_range=[FRAUD_COLOR, LEGIT_COLOR],
+        x_title="SHAP 값 (+ 사기 쪽 / − 정상 쪽)", y_title=None, sort=list(contrib["feature"]),
+        tooltip=["feature", "direction", alt.Tooltip("value:Q", title="변환값", format=".3f"),
+                 alt.Tooltip("shap:Q", format="+.3f")],
+    ), width="stretch")
+    st.caption(f"평균 예측값 {tools['explain']['base_value']:.3f}에서 시작해 변수들의 SHAP 값을 더하면 {p:.3f}가 됩니다.")
+
+    # (4) 도구 3: 비슷한 과거 사례
+    sim = tools["similar"]
+    st.markdown(f"##### 도구 3 · 비슷한 과거 거래 10건 중 사기 {sim['similar_fraud_count']}건")
+    cases = pd.DataFrame(sim["cases"])
+    cases["순위"] = range(1, len(cases) + 1)
+    dots = alt.Chart(cases).mark_circle(size=160, opacity=1, stroke="white", strokeWidth=2).encode(
+        x=alt.X("distance:Q", title="거리 (작을수록 비슷함)", scale=alt.Scale(zero=True)),
+        y=alt.Y("label:N", title=None, sort=["사기", "정상"]),
+        color=alt.Color("label:N", scale=alt.Scale(domain=["사기", "정상"], range=[FRAUD_COLOR, LEGIT_COLOR]),
+                        legend=None),
+        tooltip=["순위", "label", alt.Tooltip("distance:Q", format=".2f"), "train_row"],
+    ).properties(height=120)
+    st.altair_chart(dots, width="stretch")
+    st.caption("Train 데이터에서 30개 특성이 가장 비슷한 거래들의 실제 라벨입니다. Train 전체의 사기 비율은 약 0.17%입니다.")
+
+    # (5) 도구 1, 4: 이례적인 특성과 기대 손실
+    col_a, col_b = st.columns(2)
+    with col_a:
+        tx = tools["transaction"]
+        st.markdown(f"##### 도구 1 · 이례적인 특성 {len(tx['unusual_features'])}개")
+        unusual = pd.DataFrame([{"특성": c, "정상 거래 기준 백분위": tx["features"][c]["normal_percentile"]}
+                                for c in tx["unusual_features"]])
+        if unusual.empty:
+            st.write("정상 거래의 상·하위 1% 밖에 있는 특성이 없습니다.")
+        else:
+            st.dataframe(unusual, hide_index=True, width="stretch", height=min(250, 36 * (len(unusual) + 1)))
+        st.caption(f"금액 백분위 {tx['features']['Amount']['normal_percentile']}% · "
+                   f"{int(tx['features']['Hour']['value'])}시 거래")
+    with col_b:
+        pr = tools["priority"]
+        st.markdown("##### 도구 4 · 검토 가치")
+        st.metric("기대 손실 (사기 확률 × 사기 1건 손실)", f"{pr['expected_loss_eur']:.1f} EUR")
+        st.metric("검토로 얻는 순이익 (기대 손실 − 검토 비용)", f"{pr['net_benefit_eur']:.1f} EUR")
+
+
 # ── 4. 사이드바 ───────────────────────────────────────────
 queue, toolkit = load_toolkit()
 results = load_agent_results()
@@ -148,7 +226,8 @@ if results is not None:
     else:
         c4.metric("우선순위 높음", f"{n_pri_high}건")
 
-tab_queue, tab_models, tab_eval, tab_system = st.tabs(["📋 리뷰 큐", "📊 모델 비교", "✅ 에이전트 평가", "🧭 시스템 구조"])
+tab_stream, tab_queue, tab_models, tab_eval, tab_system = st.tabs(
+    ["⚡ 실시간 탐지", "📋 리뷰 큐", "📊 모델 비교", "✅ 에이전트 평가", "🧭 시스템 구조"])
 
 # ── 6. 탭 1: 리뷰 큐 ──────────────────────────────────────
 with tab_queue:
@@ -192,79 +271,11 @@ with tab_queue:
         if table.empty:
             st.info("필터 조건에 맞는 거래가 없습니다.")
         else:
-            # 6-3. 선택한 거래 (선택이 없으면 맨 위 거래)
-            picked = event.selection.rows[0] if event.selection.rows else 0
-            t = int(view.loc[picked, "test_row"])
-            tools = run_tools(t)
-            p = tools["priority"]["fraud_prob"]
-
-            st.subheader(f"거래 {t} · 사기 확률 {p:.3f} ({score_band(p)})")
-
-            # 6-4. 에이전트 권고 (저장된 결과)
-            saved = None if results is None else results[results["test_row"] == t]
-            if saved is not None and len(saved):
-                st.caption("에이전트 권고 (outputs/agent_results.csv에 저장된 결과)")
-                show_recommendation(saved.iloc[0].to_dict(), actual_map.get(t))
-            else:
-                st.info("저장된 에이전트 권고가 없습니다.")
-
-            # 6-5. 에이전트 실시간 실행 (API 키가 있을 때만)
-            can_run = agent_available()
-            if st.button("▶ 이 거래로 에이전트 다시 실행 (Claude API, 비용 발생)", disabled=not can_run):
-                import anthropic                                   # 키가 있을 때만 불러옴
-                from agent import review_transaction
-                with st.status("에이전트가 도구를 호출하며 조사하는 중...", expanded=True) as status:
-                    live = review_transaction(anthropic.Anthropic(), toolkit, t, p)
-                    status.update(label=f"조사 완료 (도구 {live['n_tool_calls']}회 호출)", state="complete")
-                show_recommendation(live, actual_map.get(t))
-            if not can_run:
-                st.caption("API 키(ANTHROPIC_API_KEY)와 anthropic 패키지가 있어야 실행할 수 있습니다.")
-
-            # 6-6. 도구 2: SHAP 기여도
-            st.markdown("##### 도구 2 · 점수에 영향을 준 변수 (SHAP)")
-            contrib = pd.DataFrame(tools["explain"]["top_contributions"])
-            st.altair_chart(bar_chart(
-                contrib, "shap", "feature", color="direction",
-                color_domain=["사기 쪽", "정상 쪽"], color_range=[FRAUD_COLOR, LEGIT_COLOR],
-                x_title="SHAP 값 (+ 사기 쪽 / − 정상 쪽)", y_title=None, sort=list(contrib["feature"]),
-                tooltip=["feature", "direction", alt.Tooltip("value:Q", title="변환값", format=".3f"),
-                         alt.Tooltip("shap:Q", format="+.3f")],
-            ), width="stretch")
-            st.caption(f"평균 예측값 {tools['explain']['base_value']:.3f}에서 시작해 변수들의 SHAP 값을 더하면 {p:.3f}가 됩니다.")
-
-            # 6-7. 도구 3: 비슷한 과거 사례
-            sim = tools["similar"]
-            st.markdown(f"##### 도구 3 · 비슷한 과거 거래 10건 중 사기 {sim['similar_fraud_count']}건")
-            cases = pd.DataFrame(sim["cases"])
-            cases["순위"] = range(1, len(cases) + 1)
-            dots = alt.Chart(cases).mark_circle(size=160, opacity=1, stroke="white", strokeWidth=2).encode(
-                x=alt.X("distance:Q", title="거리 (작을수록 비슷함)", scale=alt.Scale(zero=True)),
-                y=alt.Y("label:N", title=None, sort=["사기", "정상"]),
-                color=alt.Color("label:N", scale=alt.Scale(domain=["사기", "정상"], range=[FRAUD_COLOR, LEGIT_COLOR]),
-                                legend=None),
-                tooltip=["순위", "label", alt.Tooltip("distance:Q", format=".2f"), "train_row"],
-            ).properties(height=120)
-            st.altair_chart(dots, width="stretch")
-            st.caption("Train 데이터에서 30개 특성이 가장 비슷한 거래들의 실제 라벨입니다. Train 전체의 사기 비율은 약 0.17%입니다.")
-
-            # 6-8. 도구 1, 4: 이례적인 특성과 기대 손실
-            col_a, col_b = st.columns(2)
-            with col_a:
-                tx = tools["transaction"]
-                st.markdown(f"##### 도구 1 · 이례적인 특성 {len(tx['unusual_features'])}개")
-                unusual = pd.DataFrame([{"특성": c, "정상 거래 기준 백분위": tx["features"][c]["normal_percentile"]}
-                                        for c in tx["unusual_features"]])
-                if unusual.empty:
-                    st.write("정상 거래의 상·하위 1% 밖에 있는 특성이 없습니다.")
-                else:
-                    st.dataframe(unusual, hide_index=True, width="stretch", height=min(250, 36 * (len(unusual) + 1)))
-                st.caption(f"금액 백분위 {tx['features']['Amount']['normal_percentile']}% · "
-                           f"{int(tx['features']['Hour']['value'])}시 거래")
-            with col_b:
-                pr = tools["priority"]
-                st.markdown("##### 도구 4 · 검토 가치")
-                st.metric("기대 손실 (사기 확률 × 사기 1건 손실)", f"{pr['expected_loss_eur']:.1f} EUR")
-                st.metric("검토로 얻는 순이익 (기대 손실 − 검토 비용)", f"{pr['net_benefit_eur']:.1f} EUR")
+            # 6-3. 선택한 거래 (선택이 없으면 맨 위 거래) → 상세 근거는 render_detail()이 그림
+            # 필터로 표가 짧아지면 예전 선택 번호가 범위를 벗어날 수 있음 → 범위 안의 선택만 인정
+            rows = [r for r in event.selection.rows if r < len(view)]
+            picked = rows[0] if rows else 0
+            render_detail(int(view.loc[picked, "test_row"]), "queue")
 
 # ── 7. 탭 2: 모델 비교 ────────────────────────────────────
 TABLES = ["baseline_val_metrics", "eda_val_split_comparison", "supervised_cv_summary", "final_test_metrics",
@@ -477,3 +488,159 @@ with tab_system:
 - 애매한 구간이 15건뿐이라 1건 차이로 비율이 크게 흔들립니다.
 - 위치, 고객 이용 패턴 같은 정보가 있는 데이터라면 도구를 더 늘려 한계를 줄일 수 있습니다.
 """)
+
+# ── 10. 탭 0: 실시간 탐지 (Test 거래를 실제 운영처럼 흘려보내는 시뮬레이션) ──
+# - Test 행은 분할 때 섞였고 원래 Time(초)은 전처리에서 Hour(시간대)로 바뀌어, 초 단위 순서는 복원할 수 없음
+#   → 시간대(Hour) 순서로 흘려보냄 (이틀치가 하루처럼 합쳐져 보임)
+# - 진행 상태는 st.session_state에 보관 (Streamlit은 매번 파일 전체를 다시 실행하므로 일반 변수는 사라짐)
+STREAM_SPEEDS = [100, 300, 1000, 3000]                    # 1초에 처리할 거래 수 (선택지)
+STREAM_LOG_SIZE = 12                                      # "최근 거래" 표에 남길 줄 수
+
+
+@st.cache_resource
+def stream_order():
+    """흘려보낼 순서 = 시간대 순으로 정렬한 test_row 목록 (한 번만 계산)"""
+    _, toolkit = load_toolkit()
+    # argsort: 정렬했을 때의 "위치 번호"를 돌려줌 / kind="stable": 같은 시간대 안에서는 원래 행 순서 유지
+    return np.argsort(toolkit.X_test["Hour"].to_numpy(), kind="stable")
+
+
+def reset_stream():
+    """진행 상태를 처음으로 되돌림"""
+    st.session_state.update(stream_pos=0, stream_running=False, stream_alerts=[], stream_log=[])
+
+
+def process_batch(batch):
+    """거래 묶음 1개 처리: RF 점수 → 경보 판정 → 경보 거래는 도구로 근거 자동 생성"""
+    ss = st.session_state
+    _, toolkit = load_toolkit()
+    X = toolkit.X_test.iloc[batch]
+    probs = toolkit.model.predict_proba(X)[:, 1]          # 들어온 거래에 RF가 그 자리에서 점수를 매김
+    hours = X["Hour"].to_numpy()
+
+    new_log = []
+    for t, p, h in zip(batch, probs, hours):
+        t, p, h = int(t), float(p), int(h)
+        if p >= FINAL_THRESHOLD:
+            tools = run_tools(t)                           # 경보 → 도구 4개 자동 실행 (캐시되어 다시 클릭하면 빠름)
+            top = tools["explain"]["top_contributions"][0]
+            ss.stream_alerts.append({
+                "no": len(ss.stream_alerts) + 1, "hour": h, "test_row": t, "fraud_prob": p,
+                "similar_fraud": tools["similar"]["similar_fraud_count"],
+                "top_shap": f"{top['feature']} ({top['direction']})",
+            })
+            new_log.append({"hour": h, "test_row": t, "fraud_prob": p, "alert": True})
+
+    # 로그에는 이번 묶음의 경보 전부 + 마지막 정상 거래 몇 건만 남김 (전부 넣으면 1초에 수천 줄)
+    tail = [{"hour": int(h), "test_row": int(t), "fraud_prob": float(p), "alert": False}
+            for t, p, h in zip(batch[-5:], probs[-5:], hours[-5:]) if p < FINAL_THRESHOLD]
+    ss.stream_log = (list(reversed(tail)) + list(reversed(new_log)) + ss.stream_log)[:STREAM_LOG_SIZE]
+    ss.stream_pos += len(batch)
+
+
+def stream_panel(order, speed):
+    """1초마다 다시 그려지는 부분 (st.fragment로 이 함수만 다시 실행됨)"""
+    ss = st.session_state
+    # 1. 실행 중이면 이번 1초 동안 "들어온" 거래 묶음을 처리
+    if ss.stream_running and ss.stream_pos < len(order):
+        process_batch(order[ss.stream_pos: ss.stream_pos + speed])
+        if ss.stream_pos >= len(order):                    # 끝까지 왔으면 멈추고 앱 전체를 다시 그림 (버튼 상태 갱신)
+            ss.stream_running = False
+            st.rerun()
+
+    # 2. 상단 숫자
+    pos, alerts = ss.stream_pos, ss.stream_alerts
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("처리한 거래", f"{pos:,} / {len(order):,}건")
+    m2.metric("가상 시각", f"{ss.stream_log[0]['hour']:02d}시대" if ss.stream_log else "-")
+    m3.metric(f"🚨 경보 (사기 확률 ≥ {FINAL_THRESHOLD})", f"{len(alerts)}건")
+    m4.metric("자동 통과", f"{pos - len(alerts):,}건")
+    st.progress(pos / len(order))
+
+    left, right = st.columns([2, 3], gap="large")
+
+    # 3. 왼쪽: 최근 거래 로그 + 시간대별 경보
+    with left:
+        st.markdown("##### 최근 들어온 거래")
+        if ss.stream_log:
+            log = pd.DataFrame(ss.stream_log)
+            st.dataframe(pd.DataFrame({
+                "시간대": log["hour"].map(lambda h: f"{h:02d}시"),
+                "거래 번호": log["test_row"],
+                "사기 확률": log["fraud_prob"].round(3),
+                "결과": log["alert"].map({True: "🚨 경보 → 리뷰 큐", False: "✅ 통과"}),
+            }), hide_index=True, width="stretch", height=36 * (len(log) + 1) + 4)
+        else:
+            st.caption("▶ 시작을 누르면 거래가 들어오기 시작합니다.")
+
+        st.markdown("##### 시간대별 경보 건수")
+        by_hour = pd.DataFrame({"hour": range(24)}).merge(
+            pd.DataFrame(alerts, columns=["hour"]).value_counts("hour").rename("경보").reset_index(),
+            on="hour", how="left").fillna(0)
+        st.altair_chart(alt.Chart(by_hour).mark_bar(color=FRAUD_COLOR, cornerRadiusEnd=4).encode(
+            x=alt.X("hour:O", title="시간대 (시)"),
+            y=alt.Y("경보:Q", title="경보 건수", axis=alt.Axis(tickMinStep=1)),
+            tooltip=[alt.Tooltip("hour:O", title="시간대"), "경보:Q"],
+        ).properties(height=200), width="stretch")
+
+    # 4. 오른쪽: 경보 큐 (들어온 순서) + 멈췄을 때 상세 근거
+    with right:
+        st.markdown(f"##### 경보 큐 {len(alerts)}건 (도구 근거 자동 생성)")
+        if not alerts:
+            st.caption("아직 경보가 없습니다.")
+            return
+        al = pd.DataFrame(alerts)
+        rec = {} if results is None else dict(zip(results["test_row"], results["recommendation"]))
+        pri = {} if results is None else dict(zip(results["test_row"], results["priority"]))
+        table = pd.DataFrame({
+            "순번": al["no"],
+            "시간대": al["hour"].map(lambda h: f"{h:02d}시"),
+            "거래 번호": al["test_row"],
+            "사기 확률": al["fraud_prob"],
+            "유사 사례 사기": al["similar_fraud"].map(lambda n: f"{n}/10"),
+            "SHAP 1위": al["top_shap"],
+            "에이전트 권고": al["test_row"].map(rec).map(REC_LABEL).fillna("미검토"),
+            "우선순위": al["test_row"].map(pri).map(PRI_LABEL).fillna("-"),
+        })
+        if actual_map:
+            table["실제"] = al["test_row"].map(actual_map)
+        # 들어온 순서(오래된 것이 위)로 둠 → 새 경보가 아래에 붙어도 이미 고른 행 번호가 바뀌지 않음
+        event = st.dataframe(
+            table, hide_index=True, width="stretch", height=300,
+            on_select="rerun", selection_mode="single-row", key="stream_alert_table",
+            column_config={"사기 확률": st.column_config.ProgressColumn(format="%.3f", min_value=0, max_value=1)},
+        )
+        if ss.stream_running:
+            st.caption("⏸ 일시정지하면 경보를 클릭해 상세 근거를 볼 수 있습니다.")
+        else:
+            rows = [r for r in event.selection.rows if r < len(al)]
+            st.caption("경보를 클릭하면 아래에 상세 근거가 나옵니다. 선택이 없으면 가장 최근 경보를 보여 줍니다.")
+            render_detail(int(al.loc[rows[0] if rows else len(al) - 1, "test_row"]), "stream")
+
+
+with tab_stream:
+    if "stream_pos" not in st.session_state:               # 처음 접속했을 때만 초기화
+        reset_stream()
+    ss = st.session_state
+    order = stream_order()
+
+    st.caption(f"Test 거래 {len(order):,}건을 실제 운영처럼 흘려보냅니다. 거래가 들어오면 RF가 즉시 점수를 매기고, "
+               f"{FINAL_THRESHOLD} 이상이면 경보를 띄워 리뷰 큐로 보내며, 도구 4개가 근거를 자동으로 붙입니다. "
+               "(원래 초 단위 순서는 전처리에서 사라져 시간대 순으로 재생합니다.)")
+
+    # 조작 버튼: 누르면 앱 전체가 다시 실행되면서 자동 갱신 여부(run_every)도 새로 정해짐
+    c1, c2, c3 = st.columns([1, 1, 3])
+    done = ss.stream_pos >= len(order)
+    label = "⏸ 일시정지" if ss.stream_running else ("▶ 시작" if ss.stream_pos == 0 else "▶ 이어서")
+    if c1.button(label, type="primary", disabled=done, width="stretch"):
+        ss.stream_running = not ss.stream_running
+        st.rerun()
+    if c2.button("⟲ 처음부터", width="stretch"):
+        reset_stream()
+        st.rerun()
+    speed = c3.select_slider("속도 (1초에 들어오는 거래 수)", STREAM_SPEEDS, value=1000, key="stream_speed")
+    if done:
+        st.success(f"Test 거래를 모두 처리했습니다. 경보 {len(ss.stream_alerts)}건이 리뷰 큐로 갔습니다.")
+
+    # st.fragment: 이 함수만 따로 다시 실행 / run_every=1.0 → 실행 중일 때만 1초마다 자동 갱신
+    st.fragment(run_every=1.0 if ss.stream_running else None)(stream_panel)(order, speed)
