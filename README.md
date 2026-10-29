@@ -49,10 +49,10 @@ credit-card-fds/
 ├── requirements.txt
 ├── data/
 │   ├── raw/                      # 원본 데이터 (creditcard.csv)
-│   └── processed/                # 전처리된 Split 데이터 (X_train, y_train 등)
+│   └── processed/                # 전처리된 Split 데이터 (train/validation/test_processed.csv)
 ├── experiments/                  # 핵심 실험 및 모델링 스크립트
 │   ├── eda_and_split.ipynb       # [예목 담당] EDA, 데이터 정제 및 Train/Val/Test 분할
-│   ├── baseline_evaluation.py    # [동경 담당] Baseline 모델 구축 및 PR-AUC 평가 프레임워크
+│   ├── baseline_evaluation.ipynb # [동경 담당] Baseline 모델 구축 및 PR-AUC 평가 프레임워크
 │   ├── supervised_modeling.ipynb # [예목&동경 담당] 지도학습 모델 비교 & In-Fold 전처리
 │   ├── unsupervised_anomaly.ipynb# [동경 담당] 비지도 이상 탐지 & 운영 비용 시뮬레이션
 │   └── final_report.ipynb        # [예목 담당] Test Set 최종 평가 & SHAP(XAI) 리포트
@@ -61,4 +61,5 @@ credit-card-fds/
 │   ├── utils.py                  # 모델 평가, 임계값 탐색 및 이중 Y축 시각화 함수 모듈
 │   └── metrics.py                # FDS 평가 지표 및 비용 함수 계산 모듈
 └── reports/                      # 최종 산출물 및 시각화 리포트
-    └── figures/                  # EDA 및 모델 평가 차트 이미지 저장소
+    ├── figures/                  # EDA 및 모델 평가 차트 이미지 저장소
+    └── tables/                   # 결과표 CSV ("단계_데이터셋_내용.csv", 예: supervised_val_metrics.csv)

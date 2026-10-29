@@ -1,0 +1,3 @@
+﻿Model,Split,PR_AUC,Flagged_at_Recall_0.8,Precision_at_Recall_0.8
+IsolationForest,validation,0.1127075042159979,2972,0.020188425302826378
+Autoencoder,validation,0.23590725307627264,7559,0.007937557878026195

@@ -7,25 +7,24 @@
               코드 중복을 제거하고 모듈화된 유지보수 환경을 제공함.
 ================================================================================
 """
-import sys
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd  # 데이터프레임 조작 및 표 생성을 위한 라이브러리
-import seaborn as sns
 import torch  # PyTorch 딥러닝 프레임워크 불러오기
 import torch.nn as nn  # 신경망 계층(Linear, ReLU 등) 생성을 위한 모듈 불러오기
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
-    average_precision_score, confusion_matrix, precision_recall_curve
+    average_precision_score, confusion_matrix
 )
 import koreanize_matplotlib # 한글 폰트 설정이 필요한 경우
 
 
 def load_and_preprocess_data(data_dir):
     """
-    Train, Validation 분할 데이터를 로드하고 Time 제거 및 Amount 컬럼제거를 수행합니다.
-    Data Leakage 방지를 위해 Train 기준으로만 fit을 수행합니다.
+    Train, Validation 분할 데이터를 로드하고 X(피처)와 y(Class)로 분리합니다.
+    - 스케일링(Amount)과 Time → Hour 변환은 eda_and_split.ipynb에서 Train 기준으로 이미 수행됨
+    - Time 컬럼이 남아 있는 경우에만 제거 (현재 분할 데이터에는 Hour만 있음)
     """
     # 1. 팀원이 분할하여 생성한 3개 핵심 파일 존재 여부 정의 및 사전 점검
     required_files = {
@@ -38,11 +37,12 @@ def load_and_preprocess_data(data_dir):
     missing_files = [path for name, path in required_files.items() if not os.path.exists(path)]
 
     if missing_files:                                             # 누락된 파일이 하나라도 존재할 경우
-        print("필수 분할 데이터 파일이 존재하지 않습니다:")
-        for path in missing_files:                                # 누락된 파일 경로들을 반복 출력
-            print(f" - 누락된 파일: {path}")
-        print("eda_and_split.ipynb를 먼저 실행하여 Split 데이터를 생성해 주세요!")
-        sys.exit(1)                                               # 파일 누락 시 프로그램이 에러로 튕기지 않도록 안전하게 종료
+        missing = "\n".join(f" - 누락된 파일: {path}" for path in missing_files)
+        # 노트북에서도 원인이 바로 보이도록 sys.exit 대신 예외 발생
+        raise FileNotFoundError(
+            f"필수 분할 데이터 파일이 존재하지 않습니다:\n{missing}\n"
+            "eda_and_split.ipynb를 먼저 실행하여 Split 데이터를 생성해 주세요!"
+        )
 
     # 2. 정제된 CSV 데이터 로드
     train_df = pd.read_csv(required_files['train'])               # Train 분할 데이터셋 로드
@@ -57,13 +57,13 @@ def load_and_preprocess_data(data_dir):
 
     print(f"[Data Loaded] Train: {X_train.shape}, Validation: {X_val.shape}") # 로드된 데이터셋의 행/열 형태 출력
 
-    # 4. Time 변수 제거
+    # 4. Time 변수가 남아 있으면 제거
     drop_cols = ['Time'] if 'Time' in X_train.columns else []     # X_train에 'Time' 컬럼이 존재하면 제거 대상에 추가
 
-    X_train_scaled = X_train.drop(columns=drop_cols).copy()       # X_train에서 Time 컬럼을 제거한 피처 복사본 생성
-    X_val_scaled = X_val.drop(columns=drop_cols).copy()           # X_val에서 Time 컬럼을 제거한 피처 복사본 생성
+    X_train = X_train.drop(columns=drop_cols)                     # X_train에서 Time 컬럼 제거
+    X_val = X_val.drop(columns=drop_cols)                         # X_val에서 Time 컬럼 제거
 
-    return X_train_scaled, y_train, X_val_scaled, y_val
+    return X_train, y_train, X_val, y_val
 
 """
 evaluate_fds_model() :
@@ -117,7 +117,7 @@ def evaluate_thresholds(y_true, scores, thresholds=None):
 
     results = [] # 임계값별 평가 결과를 담을 빈 리스트 생성
 
-    for th in thresholds: #생선된 10개의 임계값을 하나씩 순회
+    for th in thresholds: #임계값을 하나씩 순회
         # 이상치 점수가 임계값(th) 이상이면 1(사기), 미만이면 0(정상) 으로 예측
         y_pred = (scores >= th).astype(int)
 
@@ -138,7 +138,7 @@ def evaluate_thresholds(y_true, scores, thresholds=None):
             "Precision" : prec, #정밀도
             "F1-Score" : f1, # f1 스코어
             "TP (사기 탐지)" : tp, # 실제 사기를 사기로 맞춘 건수
-            "FP (오탐/검토 대상)" : fp, # 사기를 정상으로 오탐해 상담원이 검토해야 하는 건
+            "FP (오탐/검토 대상)" : fp, # 정상 거래를 사기로 오탐해 상담원이 검토해야 하는 건수
             "FN (놓친 사기)" : fn, #사기를 정상으로 놓쳐 피해가 발생한 건수
             "Total Flagged (총 경고)" : fp+tp # FDS 시스템에서 경고를 올린 총 건수
         })
@@ -202,25 +202,25 @@ def plot_and_save_simulation(df_results, model_name, filename, figures_dir=None)
 즉 내가 복원하기 힘들 만큼 이상하게 생긴 거래 = 사기 거래 비지도학습 모델
 """
 class Autoencoder(nn.Module):
-    def __init__(self, input_dim): #초기화 메서드(input_dim : 입력 피처 개수, 예 29개)
+    def __init__(self, input_dim): #초기화 메서드(input_dim : 입력 피처 개수, 예 30개 = V1~V28, Amount, Hour)
         super(Autoencoder, self).__init__() #부모 클래스의 초기화 함수 실행
 
-        #인코더 : 입력 데이터를 작은 차원(29차원 -> 16차원 -> 8차원)으로 압축하는 신경망
+        #인코더 : 입력 데이터를 작은 차원(30차원 -> 16차원 -> 8차원)으로 압축하는 신경망
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 16),   #입력 차원29 를 16차원으로 줄임
+            nn.Linear(input_dim, 16),   #입력 차원(30)을 16차원으로 줄임
             nn.ReLU(),                  #비선형 활성화 함수 적용
             nn.Linear(16, 8),           #16 차원을 8차원 잠재공간으로 축소
             nn.ReLU()                   #비선형 활성화 함수 적용
         )
 
-        # 디코더 : 압축된 8차원 데이터를 다시 원본 차원(8차원 -> 16차원 ->29차원)으로 복구
+        # 디코더 : 압축된 8차원 데이터를 다시 원본 차원(8차원 -> 16차원 -> 30차원)으로 복구
         self.decoder = nn.Sequential(
             nn.Linear(8, 16),           # 8차원을 16차원으로 확충
             nn.ReLU(),                  # 비선형 활성화 함수 적용
-            nn.Linear(16, input_dim)    # 16차원을 다시 원본 피처 차원(29)으로 최종 복원
+            nn.Linear(16, input_dim)    # 16차원을 다시 원본 피처 차원(30)으로 최종 복원
         )
 
-    def forward(self, x): # 순전파(Foward Propagation) 연산 정의
+    def forward(self, x): # 순전파(Forward Propagation) 연산 정의
         latent = self.encoder(x) #입력 데이터 x를 인코더에 넣어 8차원으로 압축
         reconstructed = self.decoder(latent) #압축된 latent를 디코더에 넣어 원본 모양으로 복원
         return reconstructed #복원된 데이터 반환
