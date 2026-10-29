@@ -144,9 +144,28 @@ def evaluate_thresholds(y_true, scores, thresholds=None):
         })
     return pd.DataFrame(results) #결과를 데이터 프레임 표로 반환
 
+"""
+목표 Recall 달성에 필요한 검토 건수 계산 함수
+점수가 높은 거래부터 차례로 검토할 때, 사기의 target_recall 비율을 잡으려면 몇 건을 봐야 하는지 계산
+임계값 후보 목록에 의존하지 않는 정확한 값이며, 그 지점의 점수를 운영 임계값으로도 쓸 수 있음
+"""
+def flagged_for_recall(y_true, scores, target_recall=0.80):
+    """
+    y_true : 실제 사기 여부 (0: 정상, 1: 사기)
+    scores : 사기 확률 또는 이상치 점수 (클수록 사기 의심)
+    반환값 : (검토 건수, 그 지점의 점수 임계값)
+    """
+    y_true = np.asarray(y_true)
+    scores = np.asarray(scores)
+    order = np.argsort(-scores)                          # 점수 높은 순 정렬
+    cum_tp = np.cumsum(y_true[order])                    # 위에서부터 누적한 사기 건수
+    need = int(np.ceil(target_recall * y_true.sum()))    # 목표 Recall에 필요한 사기 건수
+    n_flagged = int(np.argmax(cum_tp >= need)) + 1       # 처음으로 목표에 도달한 위치 (1부터 셈)
+    return n_flagged, scores[order][n_flagged - 1]
+
 def plot_and_save_simulation(df_results, model_name, filename, figures_dir=None):
     """
-    임계값(Threshold) 변화에 따른 Recall, Precision, FP(오탐/검토 건수) 변화를 이중 Y축으로 시각화하고 저장합니다.
+    임계값(Threshold) 변화에 따른 Recall, Precision, 총 경고 건수(TP+FP, 상담원 검토 건수) 변화를 이중 Y축으로 시각화하고 저장합니다.
     
     Parameters:
     - df_results: evaluate_thresholds 결과 데이터프레임
@@ -173,10 +192,10 @@ def plot_and_save_simulation(df_results, model_name, filename, figures_dir=None)
 
     ax1.grid(True, linestyle='--', alpha=0.5)  # 점선 형태의 격자 배경 표시
 
-    # 오른쪽 Y축: FP (상담원 검토 건수)
+    # 오른쪽 Y축: 총 경고 건수 (TP + FP = 상담원이 검토해야 하는 건수, 운영 임계값 선택 기준과 동일)
     ax2 = ax1.twinx()  # X축을 공유하는 오른쪽 Y축 생성
-    ax2.set_ylabel('FP (오탐/검토 건수)', color='tab:red', fontsize=12)  
-    line3 = ax2.plot(df_results['Threshold'], df_results['FP (오탐/검토 대상)'], marker='^', color='tab:red', linestyle='--', label='FP (검토 건수)')  
+    ax2.set_ylabel('총 경고 건수 (TP+FP, 검토 건수)', color='tab:red', fontsize=12)
+    line3 = ax2.plot(df_results['Threshold'], df_results['Total Flagged (총 경고)'], marker='^', color='tab:red', linestyle='--', label='총 경고 (검토 건수)')
     ax2.tick_params(axis='y', labelcolor='tab:red')  # 오른쪽 Y축 눈금 색상 변경
 
     # 범례(Legend) 및 타이틀 설정
@@ -184,7 +203,7 @@ def plot_and_save_simulation(df_results, model_name, filename, figures_dir=None)
     labels = [l.get_label() for l in lines]  # 범례 라벨 텍스트 추출
     ax1.legend(lines, labels, loc='center left')  # 중앙 왼쪽에 범례 상자 표시
 
-    plt.title(f'[{model_name}] Threshold Simulation (Recall vs FP)', fontsize=14, pad=15)  
+    plt.title(f'[{model_name}] Threshold Simulation (Recall vs 검토 건수)', fontsize=14, pad=15)
     plt.tight_layout()  # 여백을 자동으로 깔끔하게 조정
     
     plt.savefig(save_path, dpi=300)  # 지정한 경로에 300 DPI 고해상도 이미지 파일로 저장
@@ -224,3 +243,59 @@ class Autoencoder(nn.Module):
         latent = self.encoder(x) #입력 데이터 x를 인코더에 넣어 8차원으로 압축
         reconstructed = self.decoder(latent) #압축된 latent를 디코더에 넣어 원본 모양으로 복원
         return reconstructed #복원된 데이터 반환
+
+
+"""
+Autoencoder 학습 함수
+정상 거래만으로 Autoencoder를 학습하고, 에폭별 평균 복원 오차를 기록합니다.
+unsupervised_anomaly.ipynb와 final_report.ipynb가 같은 설정으로 학습하도록 공통 함수로 분리
+"""
+def train_autoencoder(X_normal, epochs=15, batch_size=256, lr=0.001, seed=42, verbose=True):
+    """
+    X_normal : 정상 거래 피처 (스케일링된 배열 권장)
+    반환값   : (학습된 모델, 에폭별 평균 복원 오차 리스트)
+    """
+    torch.manual_seed(seed)                                   # 가중치 초기화·배치 순서를 고정해 재현성 확보
+
+    model = Autoencoder(input_dim=X_normal.shape[1])
+    criterion = nn.MSELoss()                                  # 원본과 복원 결과의 평균제곱오차
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)   # Adam 최적화 알고리즘
+
+    train_tensor = torch.FloatTensor(np.asarray(X_normal, dtype=np.float32))
+    dataloader = torch.utils.data.DataLoader(                 # 미니배치 단위로 섞어서 공급
+        torch.utils.data.TensorDataset(train_tensor),
+        batch_size=batch_size,
+        shuffle=True,
+    )
+
+    history = []
+    model.train()
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        for (x_batch,) in dataloader:
+            optimizer.zero_grad()                 # 이전 배치의 기울기 초기화
+            output = model(x_batch)               # 압축 → 복원
+            loss = criterion(output, x_batch)     # 복원 오차 계산
+            loss.backward()                       # 역전파로 기울기 계산
+            optimizer.step()                      # 가중치 업데이트
+            epoch_loss += loss.item() * len(x_batch)
+        history.append(epoch_loss / len(train_tensor))
+        if verbose:
+            print(f"Epoch {epoch + 1:2d}/{epochs} | 평균 복원 오차: {history[-1]:.4f}")
+    return model, history
+
+def reconstruction_error(model, X):
+    """Autoencoder로 복원한 결과와 원본의 거래별 평균제곱오차 (= 이상치 점수)"""
+    model.eval()                                              # 평가 모드 전환
+    with torch.no_grad():                                     # 기울기 계산 생략 (메모리·속도 절약)
+        x = torch.FloatTensor(np.asarray(X, dtype=np.float32))
+        return torch.mean((x - model(x)) ** 2, dim=1).numpy()
+
+def pca_reconstruction_error(pca, X):
+    """
+    PCA로 차원을 줄였다가 다시 복원한 결과와 원본의 거래별 평균제곱오차 (= 이상치 점수)
+    정상 거래로 학습한 주성분으로는 정상 패턴만 잘 복원되므로, 복원 오차가 크면 사기 의심
+    """
+    X = np.asarray(X)
+    X_restored = pca.inverse_transform(pca.transform(X))      # 압축 → 복원
+    return np.mean((X - X_restored) ** 2, axis=1)

@@ -17,7 +17,8 @@ Thumbs.db
 # 3. 주피터 노트북 캐시
 .ipynb_checkpoints
 
-# 4. 데이터셋 (용량이 큰 데이터 파일 Git 추적 제외)
+# 4. 데이터셋·결과물 (CSV는 크기와 상관없이 Git에 올리지 않음, 노트북 실행으로 생성)
+*.csv
 reports/figures/
 data/raw/*
 !data/raw/.gitkeep

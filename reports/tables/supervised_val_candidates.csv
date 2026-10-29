@@ -1,3 +1,0 @@
-﻿Threshold,Recall,Precision,F1-Score,TP (사기 탐지),FP (오탐/검토 대상),FN (놓친 사기),Total Flagged (총 경고),Model,Split,Target_Recall
-0.15,0.8082191780821918,0.9076923076923077,0.855072463768116,59,6,14,65,RandomForest,validation,0.8
-0.6,0.8082191780821918,0.7972972972972973,0.8027210884353742,59,15,14,74,XGBoost,validation,0.8
