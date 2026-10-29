@@ -25,6 +25,6 @@
 - 과제 쪽 파일(`experiments/`, `src/`)은 읽기만 하고 수정하지 않는다.
 
 ## 환경
-- Python: `/home/user1/anaconda3/envs/dkenv/bin/python`
+- Python: `requirements.txt`를 설치한 환경
 - 실행: `agent/` 폴더에서 `python main.py`
 - 데이터: `../data/processed` (읽기만 함, 과제 쪽 `eda_and_split.ipynb` 실행으로 생성)
