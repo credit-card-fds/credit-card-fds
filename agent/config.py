@@ -34,18 +34,18 @@ RF_PARAMS = {
 }
 
 # ── 3. 운영 기준 ─────────────
-# Validation에서 "Recall ≥ 0.80이면서 검토 건수 최소" 규칙으로 고른 임계값
+# Validation에서 "총 손실 비용(놓친 사기 × 122 + 오탐 × 5) 최소" 규칙으로 고른 임계값
 # 사기 확률이 이 값 이상이면 리뷰 큐에 올림 (사람이 검토할 대상)
-FINAL_THRESHOLD = 0.15
+FINAL_THRESHOLD = 0.10
 
 # 과제 final_report의 비용 가정 (도구 4 우선순위 점수에서 사용)
 FRAUD_LOSS_PER_CASE = 122      # 놓친 사기 1건당 평균 손실 (EUR)
 REVIEW_COST_PER_CASE = 5       # 사람이 1건 검토하는 비용 (EUR)
 
 # ── 4. 재현성 기준 ────────────────────────────────────────
-# 과제 final_report에서 RF @0.15가 Test에서 걸러 낸 건수 (evaluate.py 1부에서 비교)
-EXPECTED_QUEUE_SIZE = 68       # 리뷰 큐 전체 건수
-EXPECTED_QUEUE_FRAUD = 57      # 그중 실제 사기 건수
+# 과제 final_report에서 RF @0.10이 Test에서 걸러 낸 건수 (evaluate.py 1부에서 비교)
+EXPECTED_QUEUE_SIZE = 70       # 리뷰 큐 전체 건수
+EXPECTED_QUEUE_FRAUD = 58      # 그중 실제 사기 건수
 
 # 점수가 이 값 이상이면 "확신 구간", 미만이면 "애매한 구간" (PLAN.md 1단계에서 확인한 경계)
 HIGH_SCORE_CUTOFF = 0.7

@@ -10,7 +10,7 @@ from config import EXPECTED_QUEUE_FRAUD, EXPECTED_QUEUE_SIZE, HIGH_SCORE_CUTOFF,
 
 
 def check_reproducibility(queue, y_test):
-    """큐가 68건이고 그중 사기 57건인지 확인 (다르면 모델/데이터가 바뀐 것)"""
+    """큐가 70건이고 그중 사기 58건인지 확인 (다르면 모델/데이터가 바뀐 것)"""
     # queue["test_row"]는 X_test 안의 위치 번호 → 같은 위치의 정답을 y_test에서 꺼냄
     labels = y_test[queue["test_row"].values]
     n_queue, n_fraud = len(queue), int(labels.sum())

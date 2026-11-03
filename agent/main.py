@@ -6,8 +6,8 @@
 사용 예
   python main.py                              # 1~4단계만 (API 키 불필요)
   python main.py --agent --limit 3            # 점수 높은 3건만 에이전트 실행 (시험용)
-  python main.py --agent --only-uncertain     # 애매한 구간(<0.7) 15건만
-  python main.py --agent                      # 68건 전체
+  python main.py --agent --only-uncertain     # 애매한 구간(<0.7) 17건만
+  python main.py --agent                      # 70건 전체
 """
 import argparse
 

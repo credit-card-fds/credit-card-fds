@@ -315,7 +315,7 @@ with tab_models:
         with col2:
             pr_auc = fm.drop_duplicates("Model")[["Model", "PR_AUC"]]
             st.altair_chart(bar_chart(pr_auc, "PR_AUC", "Model", x_title="PR-AUC (Test)"), width="stretch")
-        st.caption("운영 모델은 RandomForest @0.15입니다. Validation에서 'Recall 0.8 이상이면서 검토 건수 최소' 규칙으로 골랐습니다.")
+        st.caption("운영 모델은 RandomForest @0.10입니다. Validation에서 '총 손실 비용(놓친 사기 × 122 EUR + 오탐 × 5 EUR) 최소' 규칙으로 골랐습니다.")
 
     # 7-3. 지도 vs 비지도
     if tb["final_test_model_comparison"] is not None:
@@ -485,7 +485,7 @@ with tab_system:
     st.markdown("""
 - 에이전트는 RF와 **같은 익명화 특성 30개**를 봅니다. 그래서 RF가 0점을 준 미탐 사기는 에이전트도 찾을 수 없습니다.
 - 비슷한 과거 사례가 모두 사기인데 실제로는 정상인 거래처럼, 도구 결과로는 구별할 근거가 없는 경우가 있습니다.
-- 애매한 구간이 15건뿐이라 1건 차이로 비율이 크게 흔들립니다.
+- 애매한 구간이 17건뿐이라 1건 차이로 비율이 크게 흔들립니다.
 - 위치, 고객 이용 패턴 같은 정보가 있는 데이터라면 도구를 더 늘려 한계를 줄일 수 있습니다.
 """)
 
