@@ -61,6 +61,12 @@ ALL_TOOLS = TOOL_SCHEMAS + [SUBMIT_TOOL]
 
 def _call_claude(client, messages):
     """Claude API 1회 호출 (설정은 config.py에서)"""
+    # 안전 분류기가 요청을 거절하면 서버가 다른 모델로 자동으로 다시 시도 (거절로 멈추는 일 방지)
+    # Haiku는 이 기능이 없어서 붙이지 않음 → 거절되면 아래 refusal 처리로 "실패"로 기록됨
+    fallback = {} if AGENT_MODEL.startswith("claude-haiku") else {
+        "betas": ["server-side-fallback-2026-07-01"],
+        "fallbacks": "default",
+    }
     return client.beta.messages.create(
         model=AGENT_MODEL,
         max_tokens=AGENT_MAX_TOKENS,
@@ -68,9 +74,7 @@ def _call_claude(client, messages):
         tools=ALL_TOOLS,
         messages=messages,
         output_config={"effort": AGENT_EFFORT},
-        # 안전 분류기가 요청을 거절하면 서버가 다른 모델로 자동으로 다시 시도 (거절로 멈추는 일 방지)
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
+        **fallback,                                        # 딕셔너리를 키워드 인자로 풀어서 전달 (비어 있으면 아무것도 안 붙음)
     )
 
 

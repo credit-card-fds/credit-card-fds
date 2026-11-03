@@ -51,7 +51,7 @@ EXPECTED_QUEUE_FRAUD = 58      # 그중 실제 사기 건수
 HIGH_SCORE_CUTOFF = 0.7
 
 # ── 5. 에이전트 (LLM) 설정 ─────────────────────────────────
-AGENT_MODEL = "claude-opus-5-5"   # 사용할 Claude 모델
+AGENT_MODEL = "claude-haiku-5-5"  # 사용할 Claude 모델 (비용 때문에 Haiku, 품질 우선이면 "claude-opus-5-5")
 AGENT_EFFORT = "medium"           # 생각 깊이: low / medium / high / xhigh / max
 AGENT_MAX_TOKENS = 16000          # 응답 1번의 최대 길이 (토큰)
 AGENT_MAX_TURNS = 10              # 거래 1건당 LLM 왕복 최대 횟수 (무한 루프 방지)
