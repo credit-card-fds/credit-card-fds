@@ -78,8 +78,14 @@ def score_band(p):
 
 
 def agent_available():
-    """에이전트 실행 조건: API 키 + anthropic 패키지"""
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) and importlib.util.find_spec("anthropic") is not None
+    """에이전트 실행 조건: API 키 + anthropic 패키지 (키는 export한 값 또는 agent/.env)"""
+    # 1. anthropic 패키지가 없으면 실행 불가 (agent.py가 anthropic을 불러오므로 먼저 확인)
+    if importlib.util.find_spec("anthropic") is None:
+        return False
+    # 2. agent/.env에 적힌 키를 환경 변수로 불러옴 (export한 키가 있으면 그쪽이 우선)
+    from agent import load_env_file
+    load_env_file()
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 # ── 3. 공통 그리기 도우미 ─────────────────────────────────
