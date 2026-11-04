@@ -4,12 +4,30 @@
 - LLM을 호출하는 코드는 이 파일에만 둠
 """
 import json
+import os
 
 import anthropic
 import pandas as pd
 
-from config import AGENT_EFFORT, AGENT_MAX_TOKENS, AGENT_MAX_TURNS, AGENT_MODEL, OUTPUT_DIR
+from config import AGENT_EFFORT, AGENT_MAX_TOKENS, AGENT_MAX_TURNS, AGENT_MODEL, ENV_PATH, OUTPUT_DIR
 from review_tools import TOOL_SCHEMAS
+
+
+def load_env_file(path=ENV_PATH):
+    """agent/.env의 KEY=VALUE 줄을 환경 변수로 등록 (이미 설정된 환경 변수는 덮어쓰지 않음)"""
+    # 1. 파일이 없으면 그냥 넘어감 → 터미널에서 export한 키를 그대로 씀
+    if not path.exists():
+        return
+
+    # 2. 한 줄씩 읽어 "이름=값" 형태만 처리 (빈 줄과 # 주석은 건너뜀)
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)                    # 첫 번째 = 에서만 자름 (값 안의 =는 유지)
+        value = value.strip().strip('"').strip("'")        # 따옴표로 감싸 적어도 되도록 제거
+        # setdefault: 이미 있는 환경 변수가 우선 (export한 값 > .env 값)
+        os.environ.setdefault(key.strip(), value)
 
 # 에이전트에게 주는 역할 설명 (모든 거래에 똑같이 쓰임)
 SYSTEM_PROMPT = """너는 신용카드 이상거래 탐지(FDS) 팀의 검토 보조 에이전트다.
@@ -142,6 +160,7 @@ def review_transaction(client, toolkit, test_row, fraud_prob):
 
 def run_agent(queue, toolkit, limit=None):
     """리뷰 큐 전체(또는 앞에서 limit건)를 처리해 결과 표로 반환"""
+    load_env_file()                                        # agent/.env가 있으면 키를 환경 변수로 불러옴
     client = anthropic.Anthropic()                         # API 키는 환경 변수 ANTHROPIC_API_KEY에서 읽음
     targets = queue if limit is None else queue.head(limit)
 

@@ -18,6 +18,7 @@ DATA_DIR = FDS_ROOT / "data" / "processed"                # train/validation/tes
 MODEL_DIR = AGENT_ROOT / "models"                         # 학습한 RF 모델 저장 위치 (*.joblib은 Git 제외)
 MODEL_PATH = MODEL_DIR / "rf_final.joblib"                # 모델 파일 경로
 OUTPUT_DIR = AGENT_ROOT / "outputs"                       # 리뷰 큐, 에이전트 결과 저장 위치 (*.csv는 Git 제외)
+ENV_PATH = AGENT_ROOT / ".env"                             # API 키 파일 (ANTHROPIC_API_KEY=..., Git 제외)
 
 # 과제 노트북들이 만든 결과표 (app.py 모델 비교 탭에서 읽기만 함, 노트북 실행 후 생성)
 REPORT_TABLE_DIR = FDS_ROOT / "reports" / "tables"

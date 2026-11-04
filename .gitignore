@@ -35,3 +35,7 @@ data/processed/*
 # 6. 로그 및 기타 임시 파일
 *.log
 .pytest_cache/
+
+# 7. API 키 등 비밀값 (agent/.env 같은 파일은 절대 Git에 올리지 않음)
+.env
+*.env
